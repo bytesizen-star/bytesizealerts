@@ -1,34 +1,28 @@
-name: Update Alerts
+name: Update Alerts (Full)
 
 on:
-  workflow_dispatch:        # manual "Run workflow" button
-  push:                     # run when you push changes to these paths
+  workflow_dispatch:        # allows manual runs
+  push:                     # run automatically when these files change
     paths:
       - ".github/workflows/update-alerts.yml"
-      - "scripts/**"
-      - "alerts/**"
       - "requirements.txt"
-      - "pyproject.toml"
-      - "setup.cfg"
+      - "country_alerts.py"
+      - "**/*.py"
 
 permissions:
   contents: read
 
 env:
-  # Make any feature flags your script expects available here.
-  # These will be empty unless you add them as repo secrets.
   DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
   OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
   GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
-  # If you still use Google/Blogger, add those secrets and un-comment in your code.
-  GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repo
+      - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -41,48 +35,20 @@ jobs:
           python -m pip install --upgrade pip wheel setuptools
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
-          elif [ -f pyproject.toml ]; then
-            pip install .
-          else
-            echo "No requirements.txt or pyproject.toml found; continuing."
           fi
 
-      # OPTIONAL: write Google creds file if provided as a secret JSON string
-      - name: Materialize Google credentials (optional)
-        if: env.GOOGLE_APPLICATION_CREDENTIALS_JSON != ''
-        run: |
-          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > $HOME/google-creds.json
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/google-creds.json" >> $GITHUB_ENV
-
-      - name: Run alerts script
+      - name: Run alerts script (FULL VERSION)
         shell: bash
         run: |
           set -e
-          echo "Starting ByteSizeAlerts script…"
-          # Try common entrypoints; keep the one you actually use:
-          if [ -f scripts/country_alerts.py ]; then
-            python scripts/country_alerts.py
-          else
-            python - <<'PY'
-import importlib, sys
-for mod in ("country_alerts","scripts.country_alerts"):
-    try:
-        m = importlib.import_module(mod)
-        if hasattr(m, "run"):
-            m.run()
-            sys.exit(0)
-    except Exception as e:
-        last = e
-print("Could not find country_alerts entrypoint", file=sys.stderr)
-sys.exit(2)
-PY
-          fi
-          echo "Alerts run completed."
+          echo "Running full ByteSizeAlerts workflow..."
+          python country_alerts.py
+          echo "✅ Alerts script completed successfully."
 
       - name: Send Discord notification (optional)
         if: env.DISCORD_WEBHOOK_URL != ''
         run: |
-          msg="ByteSizeAlerts: workflow finished on $GITHUB_REF by $GITHUB_ACTOR ✅"
+          msg="ByteSizeAlerts: workflow finished successfully on $GITHUB_REF by $GITHUB_ACTOR ✅"
           curl -H "Content-Type: application/json" \
                -d "{\"content\":\"${msg}\"}" \
-               "$DISCORD_WEBHOOK_URL" || echo "Discord webhook failed (continuing)."
+               "$DISCORD_WEBHOOK_URL" || echo "⚠️ Discord webhook failed (continuing)."
